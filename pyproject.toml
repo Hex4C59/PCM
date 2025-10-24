@@ -1,0 +1,27 @@
+[project]
+name = "pcm"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "matplotlib",
+    "nvitop",
+    "torch==2.3.1",
+    "torchaudio",
+    "torchvision",
+    "tqdm",
+    "pillow",
+    "pyyaml",
+    "pandas",
+    "librosa",
+    "pysndfx",
+    "transformers",
+    "huggingface-hub",
+    "praat-parselmouth>=0.4.6",
+    "ipdb>=0.13.13",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true

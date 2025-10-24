@@ -1,0 +1,6 @@
+.venv/*
+data/*
+.claude/
+runs/
+pretrained_model/
+CLAUDE.md
