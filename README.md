@@ -1,0 +1,1 @@
+# 这是论文Pitch Contour Model (PCM) with Transformer Cross-Attention for Speech Emotion Recognition 的复现代码仓库
