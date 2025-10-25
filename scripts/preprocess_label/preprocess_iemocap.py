@@ -54,9 +54,14 @@ def load_transcriptions(iemocap_root_path):
                 if ':' in line:
                     parts = line.split(':', 1)
                     if len(parts) == 2:
-                        utterance_id = parts[0].strip()
-                        text = parts[1].strip()
-                        transcriptions[utterance_id] = text
+                        # 提取 utterance_id，去掉时间戳
+                        id_part = parts[0].strip()
+                        # 用正则只保留前面的ID
+                        match = re.match(r"^([A-Za-z0-9_]+)", id_part)
+                        if match:
+                            utterance_id = match.group(1)
+                            text = parts[1].strip()
+                            transcriptions[utterance_id] = text
     
     return transcriptions
 
@@ -130,7 +135,7 @@ def create_iemocap_csv(iemocap_root_path, output_csv_path):
 
 if __name__ == "__main__":
     # IEMOCAP数据集路径
-    iemocap_root = "/mnt/shareEEx/liuyang/code/PCM/data/IEMOCAP"
+    iemocap_root = "/mnt/shareEEx/liuyang/code/PCM/data/raw/IEMOCAP_full_release"
     
     # 输出CSV文件路径
     output_csv = "/mnt/shareEEx/liuyang/code/PCM/data/labels/iemocap.csv"

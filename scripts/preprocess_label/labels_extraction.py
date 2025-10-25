@@ -11,7 +11,7 @@ def main():
     df_iemocap = pd.DataFrame(columns=['start_time', 'end_time', 'wav_file', 'emotion', 'val', 'act', 'dom'])
     
     for sess in [5]:
-        emo_evaluation_dir = '/mnt/shareEEx/liuyang/code/PCM/data/IEMOCAP/Session{}/dialog/EmoEvaluation/'.format(sess)
+        emo_evaluation_dir = '/mnt/shareEEx/liuyang/code/PCM/data/raw/IEMOCAP_full_release/Session{}/dialog/EmoEvaluation/'.format(sess)
         evaluation_files = [l for l in os.listdir(emo_evaluation_dir) if 'Ses' in l]
         for file in evaluation_files:
             with open(emo_evaluation_dir + file) as f:
