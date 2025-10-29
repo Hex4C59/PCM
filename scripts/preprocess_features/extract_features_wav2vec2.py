@@ -5,6 +5,7 @@ import torch
 import torchaudio
 import numpy as np
 from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2Model
+from pathlib import Path
 
 def extract_features(audio_file, feature_extractor, model, layer_idx, device):
     
@@ -34,7 +35,7 @@ def main():
     parser.add_argument(
         "--input",
         type=str,
-        default="data/raw/IEMOCAP_full_release",
+        default="data/raw/iemocap_audio",
         help="输入文件夹的路径"
                         )
     parser.add_argument(
@@ -64,6 +65,7 @@ def main():
 
     args = parser.parse_args()
 
+    model_name = os.path.basename(args.model_dir)
     feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(args.model_dir)
     model = Wav2Vec2Model.from_pretrained(args.model_dir)
     device = torch.device(f"cuda:{args.gpu_id}" if torch.cuda.is_available() else "cpu")
@@ -72,6 +74,9 @@ def main():
 
     audio_files = []
     for root, dirs, files in os.walk(args.input):
+        # # 路径字符串中同时包含"sentences"和"wav"这两个子字符串
+        # # /data/sentences/wav/audio.wav - 通过（包含sentences和wav）
+        # if "sentences" in root and "wav" in root:
         for file in files:
             if file.lower().endswith(('.wav', '.mp3')):
                 audio_path = os.path.join(root, file)
@@ -79,11 +84,22 @@ def main():
 
     with tqdm(audio_files, desc="提取音频特征") as pbar:
         for audio_path in pbar:
-            rel_path = os.path.relpath(audio_path, args.input)
-            model_name = os.path.basename(args.model_dir)
-            save_dir = os.path.join(args.output, f"{model_name}_l{args.layer}", os.path.dirname(rel_path))
+            # 获取Session名
+            parts = Path(audio_path).parts
+            session_name = None
+            for part in parts:
+                if part.startswith("Session"):
+                    session_name = part
+                    break
+            if session_name is None:
+                continue
+
+            # 只保留文件名
+            file_name = os.path.splitext(os.path.basename(audio_path))[0] + '.npy'
+            save_dir = os.path.join(args.output, model_name, session_name)
             os.makedirs(save_dir, exist_ok=True)
-            save_path = os.path.join(save_dir, os.path.splitext(os.path.basename(audio_path))[0] + '.npy')
+            save_path = os.path.join(save_dir, file_name)
+
             features = extract_features(audio_path, feature_extractor, model, args.layer, device)
             save_features(features, save_path)
             pbar.set_postfix({"shape": tuple(features.shape)})

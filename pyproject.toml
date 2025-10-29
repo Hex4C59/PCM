@@ -3,11 +3,11 @@ name = "pcm"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 dependencies = [
     "matplotlib",
     "nvitop",
-    "torch==2.3.1",
+    "torch",
     "torchaudio",
     "torchvision",
     "tqdm",

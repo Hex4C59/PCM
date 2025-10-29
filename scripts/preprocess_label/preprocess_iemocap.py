@@ -66,71 +66,87 @@ def load_transcriptions(iemocap_root_path):
     return transcriptions
 
 def create_iemocap_csv(iemocap_root_path, output_csv_path):
-    """创建IEMOCAP数据集的CSV文件"""
+    """创建IEMOCAP数据集的CSV文件，只保留sentences/wav下真实存在的音频"""
     all_emotions = []
-    
+
+    # 收集所有Session*/sentences/wav下的音频名（带子文件夹）
+    valid_names = set()
+    for session_dir in sorted(glob.glob(os.path.join(iemocap_root_path, "Session*"))):
+        wav_root = os.path.join(session_dir, "sentences", "wav")
+        if os.path.exists(wav_root):
+            for root, dirs, files in os.walk(wav_root):
+                for file in files:
+                    if file.endswith(".wav"):
+                        name = os.path.splitext(file)[0]
+                        valid_names.add(name)
+
+    print(f"共找到 {len(valid_names)} 个有效音频文件（sentences/wav）")
+
     # 加载转录文本
     print("加载转录文本...")
     transcriptions = load_transcriptions(iemocap_root_path)
     print(f"找到 {len(transcriptions)} 条转录文本")
-    
+
     # 遍历所有Session文件夹
     for session_dir in sorted(glob.glob(os.path.join(iemocap_root_path, "Session*"))):
         session_name = os.path.basename(session_dir)
         print(f"Processing {session_name}...")
-        
+
         # 找到EmoEvaluation文件夹中的txt文件
         emotion_files = glob.glob(os.path.join(session_dir, "dialog", "EmoEvaluation", "*.txt"))
-        
+
         for emotion_file in emotion_files:
             # 跳过子文件夹
             if os.path.isdir(emotion_file):
                 continue
-                
+
             filename = os.path.basename(emotion_file)
             if filename in ['readme.txt', 'README.txt']:
                 continue
-                
+
             try:
                 emotions_data = parse_iemocap_emotion_file(emotion_file)
-                
+
                 # 添加转录文本
                 for emotion_data in emotions_data:
                     utterance_id = emotion_data['name']
                     if utterance_id in transcriptions:
                         emotion_data['sentence'] = transcriptions[utterance_id]
                     else:
-                        # 如果找不到转录，尝试其他可能的格式
                         emotion_data['sentence'] = f"No transcript for {utterance_id}"
-                
+
                 all_emotions.extend(emotions_data)
                 print(f"  处理了 {len(emotions_data)} 个样本")
-                
+
             except Exception as e:
                 print(f"Error processing {emotion_file}: {e}")
                 continue
-    
+
     # 创建DataFrame
     df = pd.DataFrame(all_emotions)
-    
+
     if len(df) == 0:
         print("错误: 没有找到任何有效数据!")
         return None
-    
+
     print(f"总共找到 {len(df)} 条数据")
     print(f"所有情感: {df['emotion'].value_counts()}")
-    
+
     # 过滤掉非主要情感（只保留ang, hap, neu, sad）
-    main_emotions = ['ang', 'hap', 'neu', 'sad']
-    df_filtered = df[df['emotion'].isin(main_emotions)]
-    
+    # main_emotions = ['ang', 'hap', 'neu', 'sad']
+    # df_filtered = df[df['emotion'].isin(main_emotions)]
+    df_filtered = df
+
+    # 只保留在sentences/wav下真实存在的音频
+    df_filtered = df_filtered[df_filtered['name'].isin(valid_names)]
+
     print(f"过滤后剩余 {len(df_filtered)} 条数据")
     print(f"主要情感分布:\n{df_filtered['emotion'].value_counts()}")
-    
-    # 保存CSV文件，使用制表符分隔（因为数据加载器使用sep='\t'）
+
+    # 保存CSV文件，使用制表符分隔
     df_filtered.to_csv(output_csv_path, sep='\t', index=False, encoding='utf-8')
     print(f"CSV文件已保存到: {output_csv_path}")
-    
+
     return df_filtered
 
 if __name__ == "__main__":
@@ -146,9 +162,3 @@ if __name__ == "__main__":
     # 创建CSV文件
     df = create_iemocap_csv(iemocap_root, output_csv)
     
-    if df is not None:
-        print("\n数据预处理完成!")
-        print("生成的CSV文件包含以下列:")
-        print(df.columns.tolist())
-        print("\n可以开始训练了:")
-        print("python english_ver/iemocap_audio_train.py --config eng_config/audio.config")
