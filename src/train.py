@@ -11,7 +11,6 @@ from src.losses.ccc_loss import CCCLoss
 from src.model.CrossAttention import CrossAttentionRegression
 from src.utils.logger import Logger
 from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 def set_seed(seed):
     random.seed(seed)

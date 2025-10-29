@@ -21,7 +21,3 @@ dependencies = [
     "praat-parselmouth>=0.4.6",
     "ipdb>=0.13.13",
 ]
-
-[[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-default = true
