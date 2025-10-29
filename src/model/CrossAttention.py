@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from typing import Dict, Any
 
 class CrossAttentionRegression(nn.Module):
     """
@@ -30,4 +31,11 @@ class CrossAttentionRegression(nn.Module):
         # Linear regression
         out = self.regressor(pooled)      # [B, 3]
         return out
+
+    @classmethod
+    def from_config(cls, cfg: Dict[str, Any]) -> "CrossAttentionRegression":
+        return cls(
+            hidden_dim=int(cfg["hidden_dim"]),
+            num_heads=int(cfg.get("num_heads", 8)),
+        )
 

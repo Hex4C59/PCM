@@ -40,10 +40,3 @@ class CCCLoss(nn.Module):
         else:
             return loss  # [3]
 
-# 用法示例
-if __name__ == "__main__":
-    loss_fn = CCCLoss()
-    pred = torch.randn(8, 3)  # batch=8, VAD
-    target = torch.randn(8, 3)
-    loss = loss_fn(pred, target)
-    print("CCC Loss:", loss.item())
