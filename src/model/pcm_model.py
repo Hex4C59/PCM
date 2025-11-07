@@ -16,10 +16,11 @@ class AudioClassifier(nn.Module):
             self.linear = torch.nn.Linear(self.a_hidden_size, self.num_classes)
         elif self.args.exp_name =='cnn':
                 self.pitch_embedding = nn.Sequential(
-                    nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1),  # Conv1D
-                    nn.ReLU(),  
-                    nn.Conv1d(in_channels=32, out_channels=self.a_hidden_size, kernel_size=3, stride=1, padding=1),  # Conv1D
-                    nn.AdaptiveAvgPool1d(1)  
+                    nn.Conv1d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                    nn.Conv1d(in_channels=32, out_channels=self.a_hidden_size, kernel_size=3, stride=1, padding=1),
+                    # 自适应平均池化沿时序取全局均值，输出 shape 变为 (batch, hidden_size, 1)
+                    nn.AdaptiveAvgPool1d(1)
                 )
 
         elif self.args.exp_name.startswith('linear'):

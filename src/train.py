@@ -13,6 +13,7 @@ import numpy as np
 import logging
 import argparse
 import gc
+from src.metrics.ccc import ConcordanceCorrelationCoefficient
 
 
 class Trainer:
@@ -52,14 +53,6 @@ class Trainer:
         self.vad_model.load_state_dict(torch.load(self.save_path))
         self.vad_model.eval()
              
-    def concordance_correlation_coefficient(self, observed, predicted):      
-        mean_observed = np.mean(observed)
-        mean_predicted = np.mean(predicted)
-        covariance = np.cov(observed, predicted, bias=True)[0, 1]
-        obs_variance = np.var(observed, ddof=1)
-        pred_variance = np.var(predicted, ddof=1)
-        CCC = 2 * covariance / (obs_variance + pred_variance + (mean_observed - mean_predicted)**2)
-        return CCC
 
     def CalConcordanceCorrelation(self, model, dataloader):
         model.eval()
@@ -72,7 +65,6 @@ class Trainer:
 
                 dialog_id, speaker, batch_audio,batch_sr, batch_vad = data
 
-                
                 pitch_audio = None
                 if isinstance(batch_audio, tuple):
                     pitch_audio = batch_audio[0].cuda()
@@ -110,11 +102,13 @@ class Trainer:
         logits_d = np.concatenate(logits_d)
         v = np.concatenate(v)
         a = np.concatenate(a)
-        d = np.concatenate(d)    
+        d = np.concatenate(d)
 
-        ccc_V = self.concordance_correlation_coefficient(v, logits_v)
-        ccc_A = self.concordance_correlation_coefficient(a, logits_a)
-        ccc_d = self.concordance_correlation_coefficient(d, logits_d)
+        ccc_metric = ConcordanceCorrelationCoefficient()
+
+        ccc_V = ccc_metric(v, logits_v)
+        ccc_A = ccc_metric(a, logits_a)
+        ccc_d = ccc_metric(d, logits_d)
 
         return ccc_V, ccc_A, ccc_d
     
