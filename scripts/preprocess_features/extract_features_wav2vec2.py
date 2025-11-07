@@ -3,23 +3,33 @@ import os
 from tqdm import tqdm
 import torch
 import torchaudio
+import soundfile as sf
 import numpy as np
 from transformers import Wav2Vec2FeatureExtractor, Wav2Vec2Model
 from pathlib import Path
 
+TARGET_SAMPLE_RATE = 16000
+
+
+def _load_waveform(audio_file):
+    waveform, sample_rate = sf.read(audio_file, dtype="float32")
+    if waveform.ndim > 1:
+        waveform = waveform.mean(axis=1)
+    waveform = torch.from_numpy(waveform).unsqueeze(0)
+    if sample_rate != TARGET_SAMPLE_RATE:
+        waveform = torchaudio.functional.resample(
+            waveform, sample_rate, TARGET_SAMPLE_RATE
+        )
+        sample_rate = TARGET_SAMPLE_RATE
+    return waveform, sample_rate
+
+
 def extract_features(audio_file, feature_extractor, model, layer_idx, device):
-    
-    waveform, sample_rate = torchaudio.load(audio_file)
+    waveform, sample_rate = _load_waveform(audio_file)
 
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-
-    if sample_rate != 16000:
-        resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
-        waveform = resampler(waveform)
-
-    # 归一化
-    input_values = feature_extractor(waveform.squeeze().numpy(), sampling_rate=16000, return_tensors="pt").input_values
+    input_values = feature_extractor(
+        waveform.squeeze().numpy(), sampling_rate=sample_rate, return_tensors="pt"
+    ).input_values
     input_values = input_values.to(device)
     with torch.no_grad():
         outputs = model(input_values, output_hidden_states=True)

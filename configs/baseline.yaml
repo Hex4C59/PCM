@@ -1,0 +1,5 @@
+# 实验名称
+exp_name: baseline
+
+# 选取的预训练模型
+normalized: True

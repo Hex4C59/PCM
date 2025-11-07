@@ -20,4 +20,9 @@ dependencies = [
     "huggingface-hub",
     "praat-parselmouth>=0.4.6",
     "ipdb>=0.13.13",
+    "torchcodec>=0.8.1",
 ]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
