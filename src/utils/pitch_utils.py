@@ -51,7 +51,7 @@ class PitchFeatures:
             print("Total duration not found.")
             
     def set_time_and_pitch_point(self,):
-        self.pitch_tier.save(self.temp_file)
+        self.pitch_tier.save(str(self.temp_file))
         r_file = open(self.temp_file, 'r')
         
         self.pitch_point = []

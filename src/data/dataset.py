@@ -9,7 +9,7 @@ from pathlib import Path
 from torch.utils.data import Dataset
 from transformers import Wav2Vec2Processor
 import parselmouth
-from utils.pitch_utils import PitchFeatures
+from src.utils.pitch_utils import PitchFeatures
 
 
 class IEMOCAP_Dataset(Dataset):
@@ -66,8 +66,12 @@ class IEMOCAP_Dataset(Dataset):
         if self.args.exp_name == "basemodel":
             return sample
 
-        pitch_tiers = self._extract_pitch(waveform, audio_path)
-        pitch_features = self._make_pitch_features(pitch_tiers)
+        try:
+            pitch_tiers = self._extract_pitch(waveform, audio_path)
+            pitch_features = self._make_pitch_features(pitch_tiers)
+        except ValueError as e:
+            print(f"[warn] {e}; 使用零向量作为替代")
+            pitch_features = self._fallback_pitch_features()
 
         sample["pitch_features"] = pitch_features
         return sample
@@ -96,6 +100,15 @@ class IEMOCAP_Dataset(Dataset):
             return torch.tensor(source, dtype=torch.float32).unsqueeze(-1)
 
         raise ValueError(f"Unhandled exp_name: {self.args.exp_name}")
+
+    def _fallback_pitch_features(self) -> torch.Tensor:
+        """空 pitch 样本的兜底特征，确保后续堆叠不会失败"""
+        hidden = getattr(self.args, "hidden_size", 768)
+        if self.args.exp_name.startswith("linear"):
+            return torch.zeros(hidden, dtype=torch.float32)
+        if self.args.exp_name == "cnn":
+            return torch.zeros((hidden, 1), dtype=torch.float32)
+        raise ValueError(f"Unhandled exp_name for fallback: {self.args.exp_name}")
 
     def _z_score_normalization(self, pitch_values):
         mean = np.mean(pitch_values)
@@ -179,4 +192,3 @@ class IEMOCAP_Dataset(Dataset):
                 print(f"Warning: Could not clean up temporary directory {self.temp_dir}: {e}")
     
         
-

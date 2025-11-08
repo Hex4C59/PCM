@@ -14,10 +14,10 @@ from tqdm import tqdm
 from transformers import get_linear_schedule_with_warmup
 
 # 按你当前项目中的导入路径保持一致
-from model.pcm_model import AudioClassifier
-from data.dataset import IEMOCAP_Dataset
-from utils.logger import set_logger
-from src.metrics.ccc import ConcordanceCorrelationCoefficient 
+from src.model.pcm_model import AudioClassifier
+from src.data.dataset import IEMOCAP_Dataset
+from src.utils.logger import set_logger
+from src.metrics.ccc import ConcordanceCorrelationCoefficient
 
 # 固定随机性，确保 DataLoader 的 shuffle 和模型初始化可复现
 def set_seed(seed: int) -> None:
@@ -64,6 +64,29 @@ def build_optim_and_scheduler(args, model: torch.nn.Module, steps_per_epoch: int
     )
     return optimizer, scheduler
 
+
+def save_training_state(model, optimizer, scheduler, epoch, best_score, checkpoint_path):
+    state = {
+        "epoch": epoch,
+        "best_score": best_score,
+        "model_state": model.state_dict(),
+        "optimizer_state": optimizer.state_dict(),
+        "scheduler_state": scheduler.state_dict(),
+    }
+    torch.save(state, checkpoint_path)
+
+def load_training_state(checkpoint_path, model, optimizer, scheduler, device):
+    if not os.path.isfile(checkpoint_path):
+        return 0, -1e9  # 从头开始
+
+    state = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(state["model_state"])
+    optimizer.load_state_dict(state["optimizer_state"])
+    scheduler.load_state_dict(state["scheduler_state"])
+    start_epoch = state.get("epoch", 0) + 1
+    best_score = state.get("best_score", -1e9)
+    return start_epoch, best_score
+
 def train_one_epoch(model: torch.nn.Module,
                     dataloader: DataLoader,
                     optimizer,
@@ -75,58 +98,30 @@ def train_one_epoch(model: torch.nn.Module,
     max_grad_norm = getattr(args, "max_grad_norm", 1.0)
 
     running = 0.0
-    for i_batch, data in enumerate(tqdm(dataloader, mininterval=10)):
-        try:
-            # 解包与你原始脚本保持一致
-            _, _, batch_padding_tokens, batch_attention_mask, batch_audio, batch_sr, batch_vad = data
+    for batch in tqdm(dataloader, mininterval=10):
+        pitch_audio = batch["pitch_features"]
+        tf_audio = batch["tf_audio"].to(device)
+        batch_vad = batch["vad"].to(device)
 
-            # 可为空的字段判空再搬运设备
-            if batch_padding_tokens is not None:
-                batch_padding_tokens = batch_padding_tokens.to(device)
-            if batch_attention_mask is not None:
-                batch_attention_mask = batch_attention_mask.to(device)
+        if pitch_audio is not None:
+            pitch_audio = pitch_audio.to(device)
 
-            # 可能包含音高特征
-            pitch_audio = None
-            if isinstance(batch_audio, tuple):
-                pitch_audio = batch_audio[0].to(device)
-                batch_audio = batch_audio[1]
+        pred_logits = model(pitch_audio, tf_audio)
 
+        # 计算损失（假设 pred_logits 形状为 (B, 3)）
+        loss = mse(pred_logits, batch_vad.float())
 
-            batch_audio = batch_audio.to(device)   # (B, T) 或模型所需形状
-            batch_sr = batch_sr.to(device)         # 采样率，通常不参与梯度
-            batch_vad = batch_vad.to(device)       # (B, 3)，目标 V/A/D
+        # 反向与优化
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()  # 不再保留计算图
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
+        optimizer.step()
+        scheduler.step()
 
-            # 前向
-            pred_logits = model(pitch_audio, batch_audio, batch_padding_tokens, batch_attention_mask)
-            if pred_logits is None:
-                # 安全兜底：若模型跳过该 batch
-                continue
+        running += float(loss.detach().cpu().item())
 
-            # 计算损失（假设 pred_logits 形状为 (B, 3)）
-            loss = mse(pred_logits, batch_vad.float())
-
-            # 反向与优化
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()  # 不再保留计算图
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_grad_norm)
-            optimizer.step()
-            scheduler.step()
-
-            running += float(loss.detach().cpu().item())
-
-            # 释放无用内存
-            gc.collect()
-
-        except RuntimeError as e:
-            if 'out of memory' in str(e):
-                torch.cuda.empty_cache()
-                print(f"CUDA OOM at batch {i_batch}. Cleared cache and continue.")
-            else:
-                raise e
-        except Exception as e:
-            print(f"Error at batch {i_batch}: {e}. Skip this batch.")
-            continue
+        # 释放无用内存
+        gc.collect()
 
     avg_loss = running / max(1, len(dataloader))
     return avg_loss
@@ -141,26 +136,15 @@ def evaluate(model: torch.nn.Module,
     gts = []
 
     with torch.no_grad():
-        for data in tqdm(dataloader, mininterval=10):
-            _, _, batch_padding_tokens, batch_attention_mask, batch_audio, batch_sr, batch_vad = data
+        for batch in tqdm(dataloader, mininterval=10):
+            pitch_audio = batch["pitch_features"]
+            tf_audio = batch["tf_audio"].to(device)
+            batch_vad = batch["vad"].to(device)
 
-            if batch_padding_tokens is not None:
-                batch_padding_tokens = batch_padding_tokens.to(device)
-            if batch_attention_mask is not None:
-                batch_attention_mask = batch_attention_mask.to(device)
+            if pitch_audio is not None:
+                pitch_audio = pitch_audio.to(device)
 
-            pitch_audio = None
-            if isinstance(batch_audio, tuple):
-                pitch_audio = batch_audio[0].to(device)
-                batch_audio = batch_audio[1]
-            if getattr(args, "task", None) == "mfcc_wav2vec2" and pitch_audio is not None:
-                pitch_audio = pitch_audio.squeeze(0).squeeze(0)
-
-            batch_audio = batch_audio.to(device)
-            batch_sr = batch_sr.to(device)
-            batch_vad = batch_vad.to(device)
-
-            y = model(pitch_audio, batch_audio, batch_padding_tokens, batch_attention_mask)
+            y = model(pitch_audio, tf_audio)
             if y is None:
                 continue
 
@@ -202,7 +186,11 @@ def fit(args) -> None:
     set_seed(getattr(args, "seed", 42))
 
     # 输出与日志目录：默认 runs/<exp_name>
-    out_dir = os.path.join("runs", args.exp_name)
+    # 输出目录：若配置里提供 load_model_path，则优先使用它继续训练
+    default_out_dir = os.path.join("runs", args.exp_name)
+    out_dir = getattr(args, "load_model_path", None) or default_out_dir
+    os.makedirs(out_dir, exist_ok=True)
+
     if not hasattr(args, "logger_path") or not args.logger_path:
         args.logger_path = os.path.join(out_dir, "train.log")
     logger = set_logger(args.logger_path)
@@ -217,10 +205,12 @@ def fit(args) -> None:
     model = build_model(args, device)
     optimizer, scheduler = build_optim_and_scheduler(args, model, steps_per_epoch=len(train_dl))
 
-    best_score = -1e9
-    best_ckpt = None
 
-    for epoch in range(args.epochs):
+    checkpoint_path = os.path.join(out_dir, "checkpoint.pt")
+    start_epoch, best_score = load_training_state(checkpoint_path, model, optimizer, scheduler, device)
+    best_ckpt = os.path.join(out_dir, "best_model.bin") if os.path.isfile(os.path.join(out_dir, "best_model.bin")) else None
+
+    for epoch in range(start_epoch, args.epochs):
         train_loss = train_one_epoch(model, train_dl, optimizer, scheduler, device, args)
         logger.info(f"Epoch {epoch} | Train MSE Loss: {train_loss:.6f}")
 
@@ -231,23 +221,23 @@ def fit(args) -> None:
         # 保存最佳模型，并在提升时跑一次测试集评估
         if val_avg > best_score:
             best_score = val_avg
-            best_ckpt = save_checkpoint(model, out_dir)
-            
+            torch.save(model.state_dict(), os.path.join(out_dir, "best_model.bin"))
+            best_ckpt = os.path.join(out_dir, "best_model.bin")
+
             test_cccV, test_cccA, test_cccD = evaluate(model, test_dl, device, args)
             logger.info(f"Epoch {epoch} | Test CCC - V:{test_cccV:.4f} A:{test_cccA:.4f} D:{test_cccD:.4f}")
 
             test_log_path = os.path.join(out_dir, "best_test_results.txt")
             with open(test_log_path, "a", encoding="utf-8") as f:
                 f.write(
-                    f"epoch={epoch} "
-                    f"best_val_avg={best_score:.4f} "
-                    f"test_V={test_cccV:.4f} "
-                    f"test_A={test_cccA:.4f} "
-                    f"test_D={test_cccD:.4f}\n"
+                    f"epoch={epoch} best_val_avg={best_score:.4f} "
+                    f"test_V={test_cccV:.4f} test_A={test_cccA:.4f} test_D={test_cccD:.4f}\n"
                 )
 
+        # 每轮都保存最新 checkpoint，便于中断恢复
+        save_training_state(model, optimizer, scheduler, epoch, best_score, checkpoint_path)
 
-    logger.info(f"最佳验证平均 CCC: {best_score:.4f}，已保存权重: {best_ckpt}")
+    logger.info(f"最佳验证平均 CCC: {best_score:.4f}，best_model: {best_ckpt}")
     last_path = os.path.join(out_dir, "last_model.bin")
     torch.save(model.state_dict(), last_path)
 
