@@ -11,11 +11,11 @@ test_waveform_root: data/raw/iemocap_audio/test
 # 选取的预训练模型
 audio_model_name: pretrained_model/wav2vec2-large-robust
 hidden_size: 1024
-normalized: false
+normalized: true
 
 # 训练超参
 batch_size: 1
-epochs: 200
+epochs: 500
 learning_rate: 1.0e-5
 max_grad_norm: 1.0
 seed: 122
@@ -23,4 +23,5 @@ cuda: 1
 
 # 日志/输出
 logger_path: runs/cnn/train.log
-load_model_path: runs/cnn
+resume: false
+save_config_mode: effective

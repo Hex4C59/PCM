@@ -1,4 +1,6 @@
 import os
+from datetime import datetime
+import shutil
 import gc
 import argparse
 import yaml
@@ -185,20 +187,50 @@ def fit(args) -> None:
     # 优先在创建模型/数据前固定随机性
     set_seed(getattr(args, "seed", 42))
 
-    # 输出与日志目录：默认 runs/<exp_name>
-    # 输出目录：若配置里提供 load_model_path，则优先使用它继续训练
-    default_out_dir = os.path.join("runs", args.exp_name)
-    out_dir = getattr(args, "load_model_path", None) or default_out_dir
+    # 输出与日志目录：默认 runs/<exp_name>/<run_id>
+    # 若提供 load_model_path（继续训练），则优先使用它
+    load_model_path = getattr(args, "load_model_path", None)
+    resume = getattr(args, "resume", False)
+    if resume and load_model_path and os.path.exists(load_model_path):
+        out_dir = load_model_path
+    else:
+        run_id = getattr(args, "run_id", None)
+        if not run_id:
+            # 精确到秒并附微秒，避免同一时刻冲突
+            run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+            args.run_id = run_id
+        out_dir = os.path.join("runs", args.exp_name, run_id)
     os.makedirs(out_dir, exist_ok=True)
 
-    if not hasattr(args, "logger_path") or not args.logger_path:
-        args.logger_path = os.path.join(out_dir, "train.log")
+    # 将日志固定写入当前 run 目录，避免互相覆盖
+    args.logger_path = os.path.join(out_dir, "train.log")
     logger = set_logger(args.logger_path)
     device = get_device(getattr(args, "cuda", 0))
 
     logger.info(f"实验目录: {out_dir}")
     logger.info(f"设备: {device}")
     logger.info(f"超参: batch_size={args.batch_size}, epochs={args.epochs}, lr={args.learning_rate}, max_grad_norm={args.max_grad_norm}")
+
+    # 保存配置：根据 save_config_mode 控制（original/effective/both/none），默认 effective 只存一份
+    try:
+        cfg_save_dir = out_dir
+        mode = getattr(args, "save_config_mode", "effective").lower()
+        if mode not in {"original", "effective", "both", "none"}:
+            mode = "effective"
+
+        cfg_src = getattr(args, "config_path", None)
+        if mode in {"original", "both"} and cfg_src and os.path.isfile(cfg_src):
+            shutil.copyfile(cfg_src, os.path.join(cfg_save_dir, "original_config.yaml"))
+
+        if mode in {"effective", "both"}:
+            serializable = {}
+            for k, v in vars(args).items():
+                if isinstance(v, (str, int, float, bool)) or v is None:
+                    serializable[k] = v
+            with open(os.path.join(cfg_save_dir, "run_config.yaml"), "w", encoding="utf-8") as f:
+                yaml.safe_dump(serializable, f, allow_unicode=True, sort_keys=False)
+    except Exception as e:
+        logger.warning(f"保存配置失败（不影响训练）：{e}")
 
     # 构建数据、模型、优化器与调度器
     train_dl, val_dl, test_dl = build_dataloaders(args)
@@ -254,6 +286,8 @@ def main():
         cfg = yaml.safe_load(f)
     # 用 Namespace 便于点号访问
     args = SimpleNamespace(**cfg)
+    # 记录配置路径，便于保存原始 YAML
+    setattr(args, "config_path", args_cli.config)
 
     # 运行训练
     fit(args)

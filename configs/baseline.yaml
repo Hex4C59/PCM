@@ -23,4 +23,5 @@ cuda: 0
 
 # 日志/输出
 logger_path: runs/baseline/train.log
-load_model_path: runs/baseline
+resume: false
+save_config_mode: effective # effective，both，none
