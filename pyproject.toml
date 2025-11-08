@@ -3,13 +3,14 @@ name = "pcm"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 dependencies = [
     "matplotlib",
     "nvitop",
-    "torch==2.3.1",
-    "torchaudio",
-    "torchvision",
+    "torch==2.9.0",
+    "torchaudio==2.9.0",
+    "torchvision==0.24.0",
+    "numpy<2.0",
     "tqdm",
     "pillow",
     "pyyaml",
@@ -20,6 +21,7 @@ dependencies = [
     "huggingface-hub",
     "praat-parselmouth>=0.4.6",
     "ipdb>=0.13.13",
+    "transforms>=0.2.1",
 ]
 
 [[tool.uv.index]]

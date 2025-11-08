@@ -1,0 +1,26 @@
+exp_name: linear_no_norm
+
+train_label_path: data/labels/train.csv
+val_label_path: data/labels/val.csv
+test_label_path: data/labels/test.csv
+
+train_waveform_root: data/raw/iemocap_audio/train
+val_waveform_root: data/raw/iemocap_audio/val
+test_waveform_root: data/raw/iemocap_audio/test
+
+# 选取的预训练模型
+audio_model_name: pretrained_model/wav2vec2-large-robust
+hidden_size: 1024
+normalized: false
+
+# 训练超参
+batch_size: 1
+epochs: 200
+learning_rate: 1.0e-5
+max_grad_norm: 1.0
+seed: 122
+cuda: 2
+
+# 日志/输出
+logger_path: runs/linear_no_norm/train.log
+load_model_path: runs/linear_no_norm
