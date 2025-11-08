@@ -11,7 +11,8 @@ class AudioClassifier(nn.Module):
         self.a_hidden_size = self.audio_model.config.hidden_size
         self.num_classes = 3  
 
-        if self.args.exp_name == "basename":
+        # 与配置/数据集保持一致：使用 basemodel 作为纯 Wav2Vec2 线性头分支
+        if self.args.exp_name == "basemodel":
             self.linear = torch.nn.Linear(self.a_hidden_size, self.num_classes)
         elif self.args.exp_name =='cnn':
                 self.pitch_embedding = nn.Sequential(
@@ -36,7 +37,7 @@ class AudioClassifier(nn.Module):
 
         wav2vec_outputs = self.audio_model(tf_audio, output_hidden_states=True).last_hidden_state
 
-        if self.args.exp_name == "basename":
+        if self.args.exp_name == "basemodel":
             audio_output = wav2vec_outputs.mean(dim=1)
             output = self.linear(audio_output)
         elif self.args.exp_name == 'cnn':
