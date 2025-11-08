@@ -9,7 +9,6 @@ class AudioClassifier(nn.Module):
         self.args = args
         self.audio_model = Wav2Vec2Model.from_pretrained(self.args.audio_model_name, mask_feature_length=10).cuda()
         self.a_hidden_size = self.audio_model.config.hidden_size
-
         self.num_classes = 3  
 
         if self.args.exp_name == "basename":

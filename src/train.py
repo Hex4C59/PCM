@@ -14,7 +14,16 @@ import logging
 import argparse
 import gc
 from src.metrics.ccc import ConcordanceCorrelationCoefficient
+from losses.MSE import MSELoss
 
+def set_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 class Trainer:
     def __init__(self,args):
@@ -37,12 +46,7 @@ class Trainer:
 
         file_handler = logging.FileHandler(self.logger_path)
         self.logger.addHandler(file_handler)
-
-
-    def MSELoss(self, pred_VADs, VADs):
-        loss = nn.MSELoss()
-        loss_val = loss(pred_VADs, VADs.float())
-        return loss_val       
+    
 
     def SaveModel(self, model, path):
         if not os.path.exists(path):
@@ -63,7 +67,7 @@ class Trainer:
         with torch.no_grad():
             for i_batch, data in enumerate(tqdm(dataloader,mininterval=10)):
 
-                dialog_id, speaker, batch_audio,batch_sr, batch_vad = data
+                pitch_features, tf_audio, vad = data
 
                 pitch_audio = None
                 if isinstance(batch_audio, tuple):
@@ -113,9 +117,8 @@ class Trainer:
         return ccc_V, ccc_A, ccc_d
     
     def set_parameters(self,):
-
         self.vad_model.freeze_prameters()
-        
+        self.mse_loss = MSELoss()
         self.training_epochs = self.args.epoch
         self.max_grad_norm = self.args.max_grad_norm
         self.lr = self.args.learning_rate
@@ -124,43 +127,32 @@ class Trainer:
         self.optimizer = torch.optim.AdamW(self.vad_model.parameters(), lr=self.lr) # eps = 1e-05, weight_decay=0.01
         self.scheduler = get_linear_schedule_with_warmup(self.optimizer, num_warmup_steps=self.num_warmup_steps, num_training_steps=self.num_training_steps)
      
-    
-    def set_seed(self, seed):
-        random.seed(seed)
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
 
     def train(self,):
 
+        train_label_path = self.args.train_label_path
+        val_label_path = self.args.val_label_path
+        test_label_path = self.args.test_label_path
 
-        
-        if self.args.dataset == "iemocap":
-            df = pd.read_csv(self.args.text_cap_path, sep='\t', encoding='utf-8')
-          
-            train = df[df['name'].str.contains('Ses01|Ses02|Ses03')]#[:500]
-            val = df[df['name'].str.contains('Ses04')]#[:100]
-            test = df[df['name'].str.contains('Ses05')]#[:100]
-            
-        
-        self.train_dataset = IEMOCAP_Dataset(train,self.args)
-        self.dev_dataset = IEMOCAP_Dataset(val,self.args)
-        self.test_dataset = IEMOCAP_Dataset(test,self.args)
+        train_waveform_root = self.args.train_waveform_root
+        val_waveform_root = self.args.val_waveform_root
+        test_waveform_root = self.args.test_waveform_root
 
-        self.train_dataloader = DataLoader(self.train_dataset, batch_size=self.args.train_batch_size, shuffle=self.args.train_shuffle,  collate_fn=self.train_dataset.collate_fn) #num_workers=4,
-        self.dev_dataloader = DataLoader(self.dev_dataset, batch_size=self.args.eval_batch_size, shuffle=self.args.train_shuffle,  collate_fn=self.dev_dataset.collate_fn) #num_workers=4,
-        self.test_dataloader = DataLoader(self.test_dataset, batch_size=self.args.eval_batch_size, shuffle=self.args.train_shuffle, collate_fn=self.test_dataset.collate_fn) #num_workers=4,
-        
+        self.train_dataset = IEMOCAP_Dataset(train_label_path, train_waveform_root, self.args)
+        self.val_dataset = IEMOCAP_Dataset(val_label_path, val_waveform_root, self.args)
+        self.test_dataset = IEMOCAP_Dataset(test_label_path, test_waveform_root, self.args)
+
+        self.train_dataloader = DataLoader(self.train_dataset, batch_size=self.args.batch_size, shuffle=True,  collate_fn=self.train_dataset.collate_fn) 
+        self.val_dataloader = DataLoader(self.val_dataset, batch_size=self.args.batch_size, shuffle=False,  collate_fn=self.val_dataset.collate_fn) 
+        self.test_dataloader = DataLoader(self.test_dataset, batch_size=self.args.batch_size, shuffle=False, collate_fn=self.test_dataset.collate_fn) 
+
         self.set_logger()
         self.set_parameters()
         self.set_seed(self.args.seed)
         
 
 
-        self.logger.info("#############학습 시작#############")
-
-        for epoch in range(self.training_epochs):
+        for epoch in range(self.args.epochs):
             self.vad_model.train()
             loss = 0
             
@@ -168,7 +160,6 @@ class Trainer:
                 try:
                     dialog_id, speaker, batch_padding_tokens, batch_attention_mask, batch_audio,batch_sr, batch_vad = data
 
-                    """cuda 할당"""
                     if batch_padding_tokens is not None:
                         batch_padding_tokens = batch_padding_tokens.cuda()
                         batch_attention_mask = batch_attention_mask.cuda()
@@ -195,10 +186,9 @@ class Trainer:
                     if pred_logits is None:
                         print("Model output is None. Skipping this batch")
                         continue  # Skip this batch if model output is None
-                    
-                   
-                    loss_val = self.MSELoss(pred_logits, batch_vad)
-                    
+
+
+                    loss_val = self.mse_loss(pred_logits, batch_vad)
 
                     if torch.isnan(loss_val).any() or torch.isinf(loss_val).any():
                         print("NaN or Inf detected in loss_val")

@@ -135,14 +135,10 @@ class IEMOCAP_Dataset(Dataset):
                 batch_wave.append(item["waveform"].squeeze().flatten().numpy())
                 batch_sr.append(16000)
 
-            audio_input_values = torch.tensor(np.array(batch_wave), dtype=torch.float32)
+            tf_audio = torch.tensor(np.array(batch_wave), dtype=torch.float32)
             return {
-                "dialog_id": None,
-                "speaker": None,
                 "pitch_features": None,
-                "tf_audio": None,
-                "audio_input_values": audio_input_values,
-                "sampling_rate": torch.tensor(batch_sr),
+                "tf_audio": tf_audio,
                 "vad": torch.tensor(batch_vad, dtype=torch.float32),
             }
 
@@ -162,14 +158,12 @@ class IEMOCAP_Dataset(Dataset):
             return_tensors="pt",
             padding=True,
         )
+
         tf_audio = processed.input_values
 
         return {
-            "dialog_id": None,
-            "speaker": None,
             "pitch_features": pitch_features,
             "tf_audio": tf_audio,
-            "sampling_rate": torch.tensor(batch_sr),
             "vad": torch.tensor(batch_vad, dtype=torch.float32),
         }
     

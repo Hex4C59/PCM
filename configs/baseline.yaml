@@ -1,5 +1,18 @@
 # 实验名称
 exp_name: baseline
 
+train_label_path: data/labels/train.csv
+val_label_path: data/labels/val.csv
+test_label_path: data/labels/test.csv
+
+train_waveform_root: data/raw/iemocap_audio/train
+val_waveform_root: data/raw/iemocap_audio/val
+test_waveform_root: data/raw/iemocap_audio/test
+
 # 选取的预训练模型
 normalized: True
+
+batch_size: 1
+epochs: 200
+seed: 42
+cuda: 0
